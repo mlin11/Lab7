@@ -1,6 +1,7 @@
 package lab7;
 
 import java.awt.BorderLayout;
+import java.awt.Color;
 import java.awt.Font;
 import java.awt.GridLayout;
 import java.awt.event.ActionEvent;
@@ -11,27 +12,28 @@ import javax.swing.JButton;
 import javax.swing.JFrame;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
+import javax.swing.JTextArea;
 import javax.swing.JTextField;
+import javax.swing.SwingUtilities;
 
 public class AminoAcidQuizGUI extends JFrame
 {
 	private static final long serialVersionUID = 37940599221211L;
-	private JLabel fullLabel = new JLabel("Amino Acid Full Name");
-	private JTextField fullCode = new JTextField();
-	private JLabel oneLabel = new JLabel("Type One Letter Code and Enter");
-	private JTextField oneCode = new JTextField();
-	private JLabel timeLabel = new JLabel("30s");
-	private JLabel outLabel = new JLabel("Right/Wrong: 0/0");
-	private JButton startButton = new JButton("start quiz");
-	private JButton cancelButton = new JButton("cancel");
+	private final JLabel fullLabel = new JLabel("Amino Acid Full Name");
+	private final JTextArea fullCode = new JTextArea();
+	private final JLabel oneLabel = new JLabel("Type One Letter Code and Enter");
+	private final JTextField oneCode = new JTextField();
+	private final JTextArea timeArea = new JTextArea("\n\n\n        Timer");
+	private final JTextArea outArea = new JTextArea("\n\n\n  Right/Wrong: 0/0");
+	private final JButton startButton = new JButton("start quiz");
+	private final JButton cancelButton = new JButton("cancel");
 	private volatile int countR = 0;
 	private volatile int countW = 0;
-	private final int remainingTime = 30;
-	private long timeOut;
-	private volatile boolean submitted;
 	private volatile String target;
 	private volatile String right;
-	private volatile int n;
+	private volatile boolean submitted;
+	private volatile boolean cancel;
+	private volatile boolean stop;
 
 	public static String[] SHORT_NAMES = { "A", "R", "N", "D", "C", "Q", "E", "G", "H", "I", "L", "K", "M", "F", "P",
 			"S", "T", "W", "Y", "V" };
@@ -42,7 +44,7 @@ public class AminoAcidQuizGUI extends JFrame
 	public AminoAcidQuizGUI()
 	{
 		super("Amino Acid Quiz");
-		setSize(200, 200);
+		setSize(700, 600);
 		getContentPane().setLayout(new BorderLayout());
 		getContentPane().add(getBottomPanel(), BorderLayout.SOUTH);
 		getContentPane().add(getTextPanel(), BorderLayout.CENTER);
@@ -66,17 +68,27 @@ public class AminoAcidQuizGUI extends JFrame
 	{
 		JPanel panel = new JPanel();
 		panel.setLayout(new GridLayout(3, 2));
+		fullLabel.setFont(new Font("Verdana", Font.BOLD, 18));
+		fullLabel.setForeground(Color.BLACK);
 		panel.add(fullLabel);
+		fullCode.setFont(new Font("Verdana", Font.BOLD, 24));
+		fullCode.setEnabled(false);
 		panel.add(fullCode);
+		oneLabel.setFont(new Font("Verdana", Font.BOLD, 18));
+		oneLabel.setForeground(Color.BLACK);
 		panel.add(oneLabel);
 		oneCode.addActionListener(new EnterListener());
 		panel.add(oneCode);
-		timeLabel.setFont(new Font("Courier New", Font.BOLD, 20));
-		panel.add(timeLabel);
-		panel.add(outLabel);
+		timeArea.setFont(new Font("Verdana", Font.BOLD, 24));
+		timeArea.setForeground(Color.BLUE);
+		panel.add(timeArea);
+		outArea.setFont(new Font("Verdana", Font.BOLD, 24));
+		outArea.setForeground(Color.BLACK);
+		panel.add(outArea);
 		return panel;
 	}
 
+	// add listener to detect input when ENTER is pressed
 	private class EnterListener implements ActionListener
 	{
 		@Override
@@ -87,6 +99,8 @@ public class AminoAcidQuizGUI extends JFrame
 		}
 	}
 
+	// add listener to 'start quiz' button to start the quiz and enable the 'restart
+	// button'
 	private class StartActionListener implements ActionListener
 	{
 		@Override
@@ -94,97 +108,139 @@ public class AminoAcidQuizGUI extends JFrame
 		{
 			if (startButton.getText() == "restart")
 			{
-				startButton.setText("start");
-				startButton.setEnabled(false);
-				cancelButton.setEnabled(true);
+				stop = false;
 				countR = 0;
 				countW = 0;
-				new Thread(new typeInRunnable()).start();
+				timeArea.setText("\\n\n\n        Timer");
+				outArea.setText("\n\n\n  Right/Wrong: 0/0");
+				oneCode.setEnabled(true);
+				startButton.setEnabled(false);
+				cancelButton.setText("cancel");
+				cancelButton.setEnabled(true);
+				Random random = new Random();
+				int n = random.nextInt(20);
+				target = FULL_NAMES[n];
+				right = SHORT_NAMES[n];
+				fullCode.setText("\n\n" + target);
 				new Thread(new timeKeepRunnable()).start();
-
 			} else
 			{
 				startButton.setEnabled(false);
 				cancelButton.setEnabled(true);
-				new Thread(new typeInRunnable()).start();
 				new Thread(new timeKeepRunnable()).start();
+				new Thread(new checkRunnable()).start();
 			}
-
 		}
-
 	}
 
+	// add listener to cancel button and enable exit fucntion
 	private class CancelActionListener implements ActionListener
 	{
 		@Override
 		public void actionPerformed(ActionEvent e)
 		{
-			System.exit(0);
-		}
-
-	}
-
-	private class typeInRunnable implements Runnable
-	{
-		public void run()
-		{
-			try
+			if (cancelButton.getText() == "exit")
 			{
-				submitted = false;
-				oneCode.setEnabled(true);
-				outLabel.setText("Right/Wrong: 0/0");
-				timeOut = System.currentTimeMillis() + (remainingTime * 1000);
-				while (System.currentTimeMillis() < timeOut)
-				{
-					Random random = new Random();
-					n = random.nextInt(20);
-					target = FULL_NAMES[n];
-					right = SHORT_NAMES[n];
-					fullCode.setText(target);
-					// wait for the input
-					while (!submitted)
-						Thread.yield();
-					if (oneCode.getText().equals(right))
-					{
-						countR = countR + 1;
-					} else
-					{
-						countW = countW + 1;
-					}
-					outLabel.setText("Right/Wrong: " + countR + "/" + countW);
-					oneCode.setText("");
-					submitted = false;
-				}
-			} catch (Exception e)
+				System.exit(0);
+			} else
 			{
-				e.printStackTrace();
+				cancel = true;
+				startButton.setText("restart");
+				startButton.setEnabled(true);
+				stop = true;
+				cancelButton.setEnabled(false);
 			}
-
 		}
-
 	}
 
-	private class timeKeepRunnable implements Runnable
+	// a thread for the amino acid quiz part by implementing runnable
+	private class checkRunnable implements Runnable
 	{
 		public void run()
 		{
-			for (int x = 30; x >= 0; x--)
+			while (!stop)
 			{
-				timeLabel.setText(x + "s");
-				timeLabel.setFont(new Font("Courier New", Font.BOLD, 20));
 				try
 				{
-					Thread.sleep(1000);
+					Random random = new Random();
+					int n = random.nextInt(20);
+					target = FULL_NAMES[n];
+					right = SHORT_NAMES[n];
+					fullCode.setText("\n\n" + target);
+					while (!submitted)
+					{
+						Thread.yield();
+					}
+
+				} catch (Exception ex)
+				{
+					ex.printStackTrace();
+				}
+				try
+				{
+					SwingUtilities.invokeAndWait(new Runnable()
+					{
+						public void run()
+						{
+							if (oneCode.getText().equals(right))
+							{
+								countR = countR + 1;
+							} else
+							{
+								countW = countW + 1;
+							}
+							outArea.setText("\n\n\n  Right/Wrong: " + countR + "/" + countW);
+							oneCode.setText("");
+							submitted = false;
+						}
+
+					});
 				} catch (Exception e)
 				{
 					e.printStackTrace();
 				}
 			}
-			timeLabel.setText("Game over!");
-			oneCode.setEnabled(false);
-			fullCode.setText("");
-			startButton.setText("restart");
-			startButton.setEnabled(true);
+		}
+	}
+
+	// a thread for timer by implementing runnable
+	private class timeKeepRunnable implements Runnable
+	{
+		public void run()
+		{
+			try
+			{
+				int startTime = 30;
+				while (!cancel && startTime > 0)
+				{
+					timeArea.setText("\n\n\n        " + startTime + "s");
+					startTime--;
+					Thread.sleep(1000);
+				}
+			} catch (Exception ex)
+			{
+				ex.printStackTrace();
+			}
+			try
+			{
+				SwingUtilities.invokeAndWait(new Runnable()
+				{
+					public void run()
+					{
+						timeArea.setText("\n\n\n      Game over!");
+						fullCode.setText("");
+						startButton.setText("restart");
+						startButton.setEnabled(true);
+						cancelButton.setText("exit");
+						cancelButton.setEnabled(true);
+						cancel = false;
+						stop = true;
+					}
+				});
+			} catch (Exception e)
+			{
+				e.printStackTrace();
+			}
 		}
 	}
 
